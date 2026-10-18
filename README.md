@@ -80,3 +80,5 @@ Shift を押しながら操作すると、その範囲が選択されます。
 | `CsvEditor.cs` | ソースコード(C#、1 ファイル) |
 | `build.bat` | ビルド用スクリプト |
 | `dist/CsvEditor.zip` | 配布用(exe・ソース・説明書入り) |
+
+このアプリはClaude(Anthropic)と対話しながら設計・実装しました。
