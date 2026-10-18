@@ -5,7 +5,9 @@ Windows に最初から入っている .NET Framework 4.8 だけで動くので�
 
 ## ダウンロード
 
-[Releases](../../releases/latest) から `CsvEditor.zip` をダウンロードして展開し、`CsvEditor.exe` を起動してください。
+**[CsvEditor.zip をダウンロード](https://github.com/OT-VibeCoding/csv-editor/raw/main/dist/CsvEditor.zip)**
+
+ダウンロードした zip を展開し、中の `CsvEditor.exe` を起動してください。
 
 - zip を開いたまま exe を実行せず、右クリック →「すべて展開」してから起動してください。
 - 「Windows によって PC が保護されました」と出たら、「詳細情報」→「実行」を押してください。
@@ -77,3 +79,4 @@ Shift を押しながら操作すると、その範囲が選択されます。
 |---|---|
 | `CsvEditor.cs` | ソースコード(C#、1 ファイル) |
 | `build.bat` | ビルド用スクリプト |
+| `dist/CsvEditor.zip` | 配布用(exe・ソース・説明書入り) |
