@@ -1086,13 +1086,15 @@ namespace CsvEditor
                 var d = new DataObject();
                 d.SetData(DataFormats.UnicodeText, sb.ToString());
                 d.SetData(DataFormats.Text, sb.ToString());
-                Clipboard.SetDataObject(d, true, 5, 100);
+                Clipboard.SetDataObject(d, true, 10, 100);
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show(this, "クリップボードにコピーできませんでした。\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
+                // クリップボードが他のアプリに使われている等で失敗しても通知はしない。
+                // 実際には同じ内容が入っていることが多いので、それなら成功扱いにする (切り取りのため)
+                try { return Clipboard.GetText(TextDataFormat.UnicodeText) == sb.ToString(); }
+                catch { return false; }
             }
         }
 
@@ -1861,7 +1863,9 @@ namespace CsvEditor
             MessageBox.Show(this,
                 "■ 基本操作\n" +
                 "・セルを選んでそのまま入力、F2 で編集、Enter で確定して下へ、Shift+Enter で確定して上へ\n" +
-                "・入力中の ←→ は文字単位で移動、↑ で先頭へ、↓ で末尾へ (Shift 併用で選択)\n" +
+                "・文字を打ち始めた入力中は、矢印キーで確定して隣のセルへ移動\n" +
+                "・F2 / ダブルクリックで開いた編集中は、←→ で文字単位、↑ で先頭、↓ で末尾へ (Shift 併用で選択)\n" +
+                "  入力中に F2 を押すと編集中に切り替わります\n" +
                 "・列見出し(A,B..)クリックで列選択、行番号クリックで行選択 (Shift で範囲)\n" +
                 "・ファイルはウィンドウにドラッグ＆ドロップでも開けます\n" +
                 "・表の外側(灰色の行番号)に入力すると自動で行・列が増えます\n\n" +
@@ -1917,8 +1921,88 @@ namespace CsvEditor
     // ===================== グリッド (キー操作のカスタマイズ) =====================
     class CsvGrid : DataGridView
     {
+        // Excel と同じ 2 つのモード
+        //   入力モード (文字を打ち始めて入力): 矢印キーで確定して隣のセルへ移動
+        //   編集モード (F2 / ダブルクリック) : 矢印キーはセル内の文字を移動
+        public bool TextNavMode;
+        bool pendingTextNav;
+
+        public void BeginEditMode()
+        {
+            if (CurrentCell == null) return;
+            if (IsCurrentCellInEditMode) { TextNavMode = true; return; }
+            pendingTextNav = true;
+            BeginEdit(false);
+            pendingTextNav = false;
+        }
+
+        protected override void OnCellBeginEdit(DataGridViewCellCancelEventArgs e)
+        {
+            TextNavMode = pendingTextNav;
+            base.OnCellBeginEdit(e);
+        }
+
+        protected override void OnCellEndEdit(DataGridViewCellEventArgs e)
+        {
+            TextNavMode = false;
+            base.OnCellEndEdit(e);
+        }
+
+        // 入力中にセル内 (入力欄) をクリックしたら編集モードへ (Excel と同じ)
+        TextBox hookedBox;
+        protected override void OnEditingControlShowing(DataGridViewEditingControlShowingEventArgs e)
+        {
+            base.OnEditingControlShowing(e);
+            var tb = e.Control as TextBox;
+            if (tb != null && tb != hookedBox)
+            {
+                hookedBox = tb;
+                tb.MouseDown += (s, a) => { if (IsCurrentCellInEditMode) TextNavMode = true; };
+            }
+        }
+
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+            if (e.Button != MouseButtons.Left) return;
+            var hit = HitTest(e.X, e.Y);
+            if (hit.Type == DataGridViewHitTestType.Cell && hit.RowIndex >= 0 && hit.ColumnIndex >= 0)
+            {
+                if (CurrentCell == null || CurrentCell.RowIndex != hit.RowIndex || CurrentCell.ColumnIndex != hit.ColumnIndex)
+                    CurrentCell = this[hit.ColumnIndex, hit.RowIndex];
+                BeginEditMode();
+            }
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // F2: 編集モードで開く (入力モード中なら編集モードに切り替え)
+            if (keyData == Keys.F2)
+            {
+                BeginEditMode();
+                return true;
+            }
+            // 入力モード中の矢印キー: 確定して隣のセルへ
+            if (IsCurrentCellInEditMode && !TextNavMode && (keyData & (Keys.Control | Keys.Alt)) == 0)
+            {
+                int dr = 0, dc = 0;
+                switch (keyData & Keys.KeyCode)
+                {
+                    case Keys.Up: dr = -1; break;
+                    case Keys.Down: dr = 1; break;
+                    case Keys.Left: dc = -1; break;
+                    case Keys.Right: dc = 1; break;
+                }
+                if (dr != 0 || dc != 0)
+                {
+                    var c = CurrentCell;
+                    if (c == null || !EndEdit()) return true;
+                    int r = Math.Max(0, Math.Min(RowCount - 1, c.RowIndex + dr));
+                    int col = Math.Max(0, Math.Min(ColumnCount - 1, c.ColumnIndex + dc));
+                    CurrentCell = this[col, r];
+                    return true;
+                }
+            }
             // Shift+Enter: 確定して上のセルへ
             if (keyData == (Keys.Shift | Keys.Enter))
             {
@@ -1929,7 +2013,7 @@ namespace CsvEditor
                 return true;
             }
             // 入力中の矢印キー等はセル移動させずテキスト内で処理する
-            if (IsCurrentCellInEditMode)
+            if (IsCurrentCellInEditMode && TextNavMode)
             {
                 var tb = EditingControl as TextBox;
                 if (tb != null && CsvEditingControl.HandleNavKey(tb, keyData)) return true;
